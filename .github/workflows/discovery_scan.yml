@@ -1,0 +1,33 @@
+name: Discovery Scan (Full Market)
+
+on:
+  schedule:
+    # At 13:30 Vietnam Time (UTC+7) = 6:30 UTC
+    - cron: '30 6 * * 1-5'
+  workflow_dispatch:  # Manual trigger
+
+jobs:
+  discovery-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # Discovery scan may take up to 90 mins
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Discovery Scan
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python scanner.py --mode discovery

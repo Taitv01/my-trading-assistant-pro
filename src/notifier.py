@@ -101,3 +101,50 @@ def send_summary_report(top_stocks, top_industries):
             print(f"Telegram error: {response.text}")
     except Exception as e:
         print(f"Error sending Telegram message: {e}")
+
+
+def send_discovery_report(report):
+    """Send Discovery Scan report to Telegram"""
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        print("Telegram not configured, skipping notification.")
+        return
+    
+    lines = [
+        "DISCOVERY SCAN REPORT",
+        f"Scanned: {report['total_scanned']} stocks",
+        "=" * 35,
+        "",
+        "TOP 10 STOCKS BY SIGNAL:",
+    ]
+    
+    for i, stock in enumerate(report['top_20_stocks'][:10], 1):
+        lines.append(f"{i}. {stock['symbol']} | Score:{stock['score']} | RSI:{stock['rsi']:.0f}")
+    
+    lines.append("")
+    lines.append("VOLUME SPIKE ALERTS:")
+    
+    for i, stock in enumerate(report['volume_spikes'][:5], 1):
+        lines.append(f"{i}. {stock['symbol']} Vol x{stock['vol_ratio']:.1f}")
+    
+    lines.append("")
+    lines.append("TOP INDUSTRIES BY VALUE:")
+    
+    for i, ind in enumerate(report['top_industries'][:5], 1):
+        lines.append(f"{i}. Group {ind['industry']}: {ind['stock_count']} stocks")
+    
+    msg = "\n".join(lines)
+    
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        'chat_id': CHAT_ID,
+        'text': msg,
+        'parse_mode': 'HTML'
+    }
+    try:
+        response = requests.post(url, data=payload)
+        if response.status_code == 200:
+            print("Discovery report sent to Telegram.")
+        else:
+            print(f"Telegram error: {response.text}")
+    except Exception as e:
+        print(f"Error sending Telegram message: {e}")

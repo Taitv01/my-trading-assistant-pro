@@ -1,0 +1,191 @@
+"""
+Discovery Scanner - Full market scan to discover new opportunities and industry money flow
+Runs once daily at 13:30 VN time
+"""
+import time
+import json
+from datetime import datetime
+from collections import defaultdict
+from vnstock import Listing, Quote
+from .data_fetcher import fetch_data
+from .indicators import calculate_indicators, check_signals
+from .filters import is_investable
+from .config import MIN_SCORE
+
+# Rate limiting
+API_DELAY_SECONDS = 2.5
+
+# Output file to store discovered stocks
+DISCOVERY_CACHE_FILE = "discovery_cache.json"
+
+
+def get_all_symbols_with_industry():
+    """Get all symbols - industry mapping will be done via analysis"""
+    try:
+        listing = Listing(source='VCI')
+        df = listing.all_symbols()
+        return df['symbol'].tolist()
+    except Exception as e:
+        print(f"Error fetching symbols: {e}")
+        return []
+
+
+def analyze_stock_with_details(symbol):
+    """Analyze stock and return detailed data including volume metrics"""
+    try:
+        df = fetch_data(symbol)
+        if df is None or len(df) < 20:
+            return None
+        
+        df = calculate_indicators(df)
+        
+        # Calculate volume metrics
+        last = df.iloc[-1]
+        avg_vol_20 = df['volume'].tail(20).mean()
+        avg_value_20 = (df['close'] * df['volume']).tail(20).mean() * 1000  # VND
+        
+        # Check if investable
+        investable = is_investable(df)
+        
+        # Get signal score
+        score, reasons = check_signals(df)
+        
+        # Volume spike detection
+        vol_ratio = last['volume'] / avg_vol_20 if avg_vol_20 > 0 else 0
+        
+        return {
+            'symbol': symbol,
+            'score': score,
+            'reasons': reasons,
+            'price': last['close'],
+            'rsi': last['RSI'],
+            'macd': last['MACD'],
+            'volume': last['volume'],
+            'avg_value_20': avg_value_20,
+            'vol_ratio': vol_ratio,
+            'investable': investable,
+            'has_signal': score >= MIN_SCORE
+        }
+    except Exception as e:
+        return None
+
+
+def run_discovery_scan():
+    """
+    Run full market discovery scan.
+    Returns:
+        - Top 20 stocks by score
+        - Top 10 industries by money flow
+        - List of new "hot" stocks not in current watchlist
+    """
+    print("="*50)
+    print("DISCOVERY SCAN - Full Market Analysis")
+    print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("="*50)
+    
+    # Get all symbols
+    all_symbols = get_all_symbols_with_industry()
+    total = len(all_symbols)
+    print(f"Total symbols to scan: {total}")
+    print(f"Estimated time: {total * API_DELAY_SECONDS / 60:.1f} minutes")
+    
+    # Analyze all stocks
+    results = []
+    industry_volumes = defaultdict(lambda: {'total_value': 0, 'count': 0, 'signals': 0})
+    
+    for i, symbol in enumerate(all_symbols):
+        if (i + 1) % 50 == 0:
+            print(f"Progress: {i + 1}/{total} ({(i+1)*100/total:.1f}%)")
+        
+        result = analyze_stock_with_details(symbol)
+        if result:
+            results.append(result)
+            
+            # Aggregate by first letter (pseudo-industry grouping)
+            # In production, this would use actual ICB industry codes
+            industry_key = symbol[0]  # Simplified grouping
+            industry_volumes[industry_key]['total_value'] += result['avg_value_20']
+            industry_volumes[industry_key]['count'] += 1
+            if result['has_signal']:
+                industry_volumes[industry_key]['signals'] += 1
+        
+        time.sleep(API_DELAY_SECONDS)
+    
+    print(f"\nAnalyzed {len(results)} stocks successfully")
+    
+    # Sort by score
+    results.sort(key=lambda x: (x['score'], x['avg_value_20']), reverse=True)
+    
+    # Top 20 stocks by score
+    top_20_stocks = [r for r in results if r['has_signal']][:20]
+    
+    # Top stocks by volume spike (potential new opportunities)
+    volume_spikes = sorted(
+        [r for r in results if r['vol_ratio'] > 2.0 and r['investable']],
+        key=lambda x: x['vol_ratio'],
+        reverse=True
+    )[:20]
+    
+    # Industry analysis
+    industry_ranking = sorted(
+        [
+            {
+                'industry': k,
+                'total_value': v['total_value'],
+                'stock_count': v['count'],
+                'signal_count': v['signals'],
+                'signal_ratio': v['signals'] / v['count'] if v['count'] > 0 else 0
+            }
+            for k, v in industry_volumes.items()
+        ],
+        key=lambda x: x['total_value'],
+        reverse=True
+    )[:10]
+    
+    # Prepare discovery report
+    report = {
+        'scan_time': datetime.now().isoformat(),
+        'total_scanned': len(results),
+        'top_20_stocks': top_20_stocks,
+        'volume_spikes': volume_spikes,
+        'top_industries': industry_ranking
+    }
+    
+    # Save to cache file
+    try:
+        with open(DISCOVERY_CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(report, f, ensure_ascii=False, indent=2, default=str)
+        print(f"Discovery report saved to {DISCOVERY_CACHE_FILE}")
+    except Exception as e:
+        print(f"Error saving cache: {e}")
+    
+    return report
+
+
+def format_discovery_report(report):
+    """Format discovery report for Telegram"""
+    lines = [
+        "DISCOVERY SCAN REPORT",
+        f"Scanned: {report['total_scanned']} stocks",
+        "=" * 35,
+        "",
+        "TOP 10 STOCKS BY SIGNAL:",
+    ]
+    
+    for i, stock in enumerate(report['top_20_stocks'][:10], 1):
+        reasons = ", ".join(stock['reasons']) if stock['reasons'] else "-"
+        lines.append(f"{i}. {stock['symbol']} | Score:{stock['score']} | RSI:{stock['rsi']:.0f}")
+    
+    lines.append("")
+    lines.append("VOLUME SPIKE ALERTS:")
+    
+    for i, stock in enumerate(report['volume_spikes'][:5], 1):
+        lines.append(f"{i}. {stock['symbol']} Vol x{stock['vol_ratio']:.1f}")
+    
+    lines.append("")
+    lines.append("TOP INDUSTRIES BY VALUE:")
+    
+    for i, ind in enumerate(report['top_industries'][:5], 1):
+        lines.append(f"{i}. Group {ind['industry']}: {ind['stock_count']} stocks, {ind['signal_count']} signals")
+    
+    return "\n".join(lines)
