@@ -1,0 +1,14 @@
+name: Scan UPCOM
+on:
+  schedule:
+    - cron: '45 2 * * 1-5' # 9:45 AM VN
+  workflow_dispatch:
+jobs:
+  run-upcom:
+    runs-on: ubuntu-latest
+    # ... (Các bước setup giống hệt trên) ...
+      - name: Quét UPCOM
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python bot.py --exchange UPCOM
