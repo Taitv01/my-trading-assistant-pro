@@ -8,18 +8,27 @@ from .data_fetcher import fetch_data
 from .indicators import calculate_indicators, check_signals
 from .filters import is_investable
 from .config import MIN_SCORE
+from .smart_filter import get_smart_watchlist
 
 # Rate limiting: vnstock Guest limit is 30 requests/minute
 # We add 2.5 second delay to stay safely under limit (24 requests/min)
 API_DELAY_SECONDS = 2.5
 
 
-def get_all_symbols():
-    """Fetch all stock symbols from HOSE, HNX, UPCOM"""
+def get_all_symbols(use_smart_filter=True):
+    """
+    Fetch stock symbols for scanning.
+    
+    Args:
+        use_smart_filter: If True, use smart watchlist (~150 liquid stocks).
+                         If False, fetch all ~1700 symbols.
+    """
+    if use_smart_filter:
+        return get_smart_watchlist()
+    
     try:
         listing = Listing(source='VCI')
         df = listing.all_symbols()
-        # Return list of symbols
         return df['symbol'].tolist()
     except Exception as e:
         print(f"Error fetching symbols: {e}")
