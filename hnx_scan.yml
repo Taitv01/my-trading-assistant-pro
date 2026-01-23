@@ -1,0 +1,14 @@
+name: Scan HNX
+on:
+  schedule:
+    - cron: '30 2 * * 1-5' # 9:30 AM VN
+  workflow_dispatch:
+jobs:
+  run-hnx:
+    runs-on: ubuntu-latest
+    # ... (Các bước setup giống hệt trên) ...
+      - name: Quét HNX
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python bot.py --exchange HNX
