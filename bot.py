@@ -11,116 +11,83 @@ from vnstock import listing_companies
 logging.basicConfig(filename='bot.log', level=logging.INFO, format='%(asctime)s - %(message)s')
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='Bot Trading Pro Scan')
+    parser = argparse.ArgumentParser(description='Bot Trading Pro')
     parser.add_argument('--exchange', type=str, default='HOSE', 
-                        choices=['HOSE', 'HNX', 'UPCOM'],
-                        help='Chọn sàn giao dịch')
+                        choices=['HOSE', 'HNX', 'UPCOM'], help='Chọn sàn')
     return parser.parse_args()
 
 def get_ticker_industry_map(exchange_name):
-    """
-    Lấy danh sách mã và map ngành nghề
-    Output: (['HPG', 'NKG'], {'HPG': 'Tài nguyên', 'NKG': 'Tài nguyên'})
-    """
-    print(f"⏳ Đang tải dữ liệu ngành nghề sàn {exchange_name}...")
+    print(f"⏳ Đang tải danh sách ngành nghề sàn {exchange_name}...")
     try:
         df = listing_companies()
         exchange_name = exchange_name.upper()
-        
-        # Lọc theo sàn
         if 'exchange' in df.columns:
             df_filtered = df[df['exchange'] == exchange_name]
+            # Lấy cột ngành (ưu tiên industry, nếu ko có lấy organ_short_name)
+            ind_col = 'industry' if 'industry' in df_filtered.columns else 'organ_short_name'
             
-            # Tạo dictionary: Key=Ticker, Value=Industry
-            # Cột ngành thường tên là 'industry' hoặc 'organ_sector' tùy version vnstock
-            # Ta ưu tiên lấy ngành cấp 2 (chi tiết hơn)
-            if 'industry' in df_filtered.columns:
-                ind_col = 'industry' 
-            else:
-                ind_col = 'organ_short_name' # Fallback
-            
-            # Map ticker -> industry
-            # Ví dụ: {'VCB': 'Ngân hàng', 'HPG': 'Thép'}
+            # Tạo map: Ticker -> Industry
             industry_map = pd.Series(df_filtered[ind_col].values, index=df_filtered['ticker']).to_dict()
             tickers = df_filtered['ticker'].tolist()
-            
-            print(f"✅ Đã map ngành cho {len(tickers)} mã sàn {exchange_name}.")
+            print(f"✅ Đã tìm thấy {len(tickers)} mã.")
             return tickers, industry_map
-        else:
-            return [], {}
+        return [], {}
     except Exception as e:
-        logging.error(f"Lỗi lấy ngành: {e}")
+        logging.error(f"Lỗi ngành: {e}")
         return [], {}
 
 def main():
     args = parse_arguments()
-    target_exchange = args.exchange
-    start_time = datetime.utcnow() + timedelta(hours=7)
+    target = args.exchange
     
-    print(f"🚀 Bot Pro (Text Only) khởi động lúc {start_time.strftime('%H:%M %d/%m')}")
-    
-    # 1. LẤY MÃ & NGÀNH
-    watchlist, industry_map = get_ticker_industry_map(target_exchange)
-    
-    if not watchlist:
-        print("❌ Không lấy được danh sách mã.")
-        return
+    # 1. LẤY MÃ
+    watchlist, ind_map = get_ticker_industry_map(target)
+    if not watchlist: return
 
-    opportunities = [] 
+    opportunities = []
+    print(f"📋 Đang quét {len(watchlist)} mã...")
     
-    print(f"📋 Bắt đầu phân tích {len(watchlist)} mã...")
-    
+    # 2. QUÉT VÒNG LẶP
     for idx, symbol in enumerate(watchlist):
         if idx % 50 == 0: print(f"Scanning {idx}/{len(watchlist)}...")
-
-        # A. Lấy dữ liệu & Lọc
+        
+        # A. Lấy data & Lọc
         df = fetch_data_safe(symbol)
         if df is None: continue
         
-        is_good, msg = check_quality(df, symbol)
-        if not is_good: continue 
+        is_good, _ = check_quality(df, symbol)
+        if not is_good: continue
             
-        # B. Tính toán
+        # B. Tính điểm
         df = calculate_indicators(df)
         score, reasons, change = score_stock(df)
         
-        # C. Lưu nếu đạt điểm
+        # C. Lưu nếu đạt chuẩn
         if score >= MIN_SCORE_TO_ALERT:
-            # Lấy ngành của mã này (Nếu không có thì để 'Khác')
-            industry = industry_map.get(symbol, "Khác")
-            
+            industry = ind_map.get(symbol, "Khác")
             opportunities.append({
                 'symbol': symbol,
-                'industry': industry, # Quan trọng: Lưu ngành vào đây
+                'industry': industry,
                 'score': score,
                 'change': change,
                 'reasons': reasons,
-                'price': df.iloc[-1]['close'],
-                'vol': df.iloc[-1]['volume']
+                'price': df.iloc[-1]['close']
             })
-            logging.info(f"⭐ {symbol}: {score}đ")
 
-    # 2. GOM NHÓM THEO NGÀNH (GROUPING)
-    if not opportunities:
-        print(f"💤 Sàn {target_exchange} yên ắng.")
-    else:
-        # Sắp xếp theo điểm số cao nhất trước
+    # 3. GỬI BÁO CÁO
+    if opportunities:
+        # Sắp xếp theo điểm
         opportunities.sort(key=lambda x: x['score'], reverse=True)
+        top_picks = opportunities[:TOP_RANKING]
         
-        # Chỉ lấy Top N mã tốt nhất toàn thị trường (để tránh spam)
-        top_picks = opportunities[:TOP_RANKING + 5] # Lấy dư ra chút
-        
-        # Gom nhóm: Dictionary { 'Ngân hàng': [Mã A, Mã B], 'Thép': [Mã C] }
-        grouped_results = defaultdict(list)
+        # Gom nhóm theo ngành
+        grouped = defaultdict(list)
         for item in top_picks:
-            grouped_results[item['industry']].append(item)
+            grouped[item['industry']].append(item)
             
-        print(f"📡 Đang gửi báo cáo phân ngành...")
-        
-        # Gửi report text
-        send_text_report(target_exchange, grouped_results)
-
-    print("✅ Hoàn thành.")
+        send_text_report(target, grouped)
+    else:
+        print("💤 Thị trường yên ắng.")
 
 if __name__ == "__main__":
     main()
