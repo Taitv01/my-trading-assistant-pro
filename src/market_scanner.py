@@ -2,11 +2,16 @@
 Market Scanner Module - Full market scan logic for HOSE, HNX, UPCOM
 """
 import pandas as pd
+import time
 from vnstock import Listing
 from .data_fetcher import fetch_data
 from .indicators import calculate_indicators, check_signals
 from .filters import is_investable
 from .config import MIN_SCORE
+
+# Rate limiting: vnstock Guest limit is 30 requests/minute
+# We add 2.5 second delay to stay safely under limit (24 requests/min)
+API_DELAY_SECONDS = 2.5
 
 
 def get_all_symbols():
@@ -69,19 +74,24 @@ def analyze_market(symbols=None, max_stocks=None):
     if max_stocks:
         symbols = symbols[:max_stocks]
     
-    print(f"Analyzing {len(symbols)} symbols...")
+    print(f"Analyzing {len(symbols)} symbols (with {API_DELAY_SECONDS}s delay per request)...")
+    estimated_time = len(symbols) * API_DELAY_SECONDS / 60
+    print(f"Estimated time: {estimated_time:.1f} minutes")
     
     results = []
     industry_scores = {}
     
     for i, symbol in enumerate(symbols):
-        if (i + 1) % 50 == 0:
+        if (i + 1) % 25 == 0:
             print(f"Progress: {i + 1}/{len(symbols)}")
         
         result = analyze_stock(symbol)
         if result:
             results.append(result)
             # Track industry (for now, we don't have industry info, will add later)
+        
+        # Rate limiting delay
+        time.sleep(API_DELAY_SECONDS)
     
     # Sort by score descending
     results.sort(key=lambda x: x['score'], reverse=True)
