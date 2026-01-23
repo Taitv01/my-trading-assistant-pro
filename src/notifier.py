@@ -57,3 +57,47 @@ def send_telegram_alert(symbol, score, reasons, price, df):
     # Dọn dẹp ảnh
     if os.path.exists(chart_path):
         os.remove(chart_path)
+
+
+def send_summary_report(top_stocks, top_industries):
+    """Send Full Scan summary report to Telegram"""
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        print("Telegram not configured, skipping notification.")
+        return
+    
+    if not top_stocks:
+        msg = "FULL SCAN REPORT\n\nKhong tim thay tin hieu mua nao trong phien."
+    else:
+        lines = ["FULL SCAN REPORT - TOP 10 CO PHIEU"]
+        lines.append("=" * 35)
+        
+        for i, stock in enumerate(top_stocks[:10], 1):
+            reasons_str = ", ".join(stock['reasons']) if stock['reasons'] else "-"
+            lines.append(
+                f"{i}. {stock['symbol']} | Score: {stock['score']} | "
+                f"Gia: {stock['price']:,.0f}"
+            )
+            lines.append(f"   RSI: {stock['rsi']:.1f} | {reasons_str}")
+        
+        if top_industries:
+            lines.append("\nTOP 3 NGANH DAN SONG:")
+            for i, ind in enumerate(top_industries[:3], 1):
+                lines.append(f"{i}. {ind['name']} ({ind['count']} tin hieu)")
+        
+        msg = "\n".join(lines)
+    
+    # Send text message
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        'chat_id': CHAT_ID,
+        'text': msg,
+        'parse_mode': 'HTML'
+    }
+    try:
+        response = requests.post(url, data=payload)
+        if response.status_code == 200:
+            print("Summary report sent to Telegram.")
+        else:
+            print(f"Telegram error: {response.text}")
+    except Exception as e:
+        print(f"Error sending Telegram message: {e}")

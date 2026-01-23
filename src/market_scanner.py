@@ -1,0 +1,117 @@
+"""
+Market Scanner Module - Full market scan logic for HOSE, HNX, UPCOM
+"""
+import pandas as pd
+from vnstock import Listing
+from .data_fetcher import fetch_data
+from .indicators import calculate_indicators, check_signals
+from .filters import is_investable
+from .config import MIN_SCORE
+
+
+def get_all_symbols():
+    """Fetch all stock symbols from HOSE, HNX, UPCOM"""
+    try:
+        listing = Listing(source='VCI')
+        df = listing.all_symbols()
+        # Return list of symbols
+        return df['symbol'].tolist()
+    except Exception as e:
+        print(f"Error fetching symbols: {e}")
+        return []
+
+
+def analyze_stock(symbol):
+    """Analyze a single stock and return its score and data"""
+    try:
+        df = fetch_data(symbol)
+        if df is None:
+            return None
+        
+        df = calculate_indicators(df)
+        
+        if not is_investable(df):
+            return None
+        
+        score, reasons = check_signals(df)
+        
+        if score > 0:
+            last = df.iloc[-1]
+            return {
+                'symbol': symbol,
+                'score': score,
+                'reasons': reasons,
+                'price': last['close'],
+                'rsi': last['RSI'],
+                'macd': last['MACD'],
+                'volume': last['volume']
+            }
+        return None
+    except Exception as e:
+        print(f"Error analyzing {symbol}: {e}")
+        return None
+
+
+def analyze_market(symbols=None, max_stocks=None):
+    """
+    Analyze entire market and return top stocks and industries.
+    
+    Args:
+        symbols: List of symbols to analyze. If None, fetches all.
+        max_stocks: Limit number of stocks to analyze (for testing).
+    
+    Returns:
+        tuple: (top_10_stocks, top_3_industries)
+    """
+    if symbols is None:
+        symbols = get_all_symbols()
+    
+    if max_stocks:
+        symbols = symbols[:max_stocks]
+    
+    print(f"Analyzing {len(symbols)} symbols...")
+    
+    results = []
+    industry_scores = {}
+    
+    for i, symbol in enumerate(symbols):
+        if (i + 1) % 50 == 0:
+            print(f"Progress: {i + 1}/{len(symbols)}")
+        
+        result = analyze_stock(symbol)
+        if result:
+            results.append(result)
+            # Track industry (for now, we don't have industry info, will add later)
+    
+    # Sort by score descending
+    results.sort(key=lambda x: x['score'], reverse=True)
+    
+    # Top 10 stocks
+    top_10_stocks = results[:10]
+    
+    # TODO: Industry analysis (requires industry mapping from vnstock)
+    # For now, return empty list
+    top_3_industries = []
+    
+    print(f"Analysis complete. Found {len(results)} stocks with signals.")
+    
+    return top_10_stocks, top_3_industries
+
+
+def format_top_stocks_report(top_stocks):
+    """Format top stocks into a readable message"""
+    if not top_stocks:
+        return "No buy signals found."
+    
+    lines = ["TOP 10 STOCKS:"]
+    lines.append("=" * 30)
+    
+    for i, stock in enumerate(top_stocks, 1):
+        reasons_str = ", ".join(stock['reasons']) if stock['reasons'] else "Score > 0"
+        lines.append(
+            f"{i}. {stock['symbol']} - Score: {stock['score']} - "
+            f"Price: {stock['price']:,.0f} - RSI: {stock['rsi']:.1f}"
+        )
+        lines.append(f"   Reason: {reasons_str}")
+    
+    return "\n".join(lines)

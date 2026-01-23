@@ -41,7 +41,7 @@ def check_signals(df):
         vol_ratio = last['volume'] / last['VolMA20']
         if vol_ratio > 1.3:
             score += 2
-            reasons.append(f"Vol đột biến (x{vol_ratio:.1f})")
+            reasons.append(f"Vol Spike (x{vol_ratio:.1f})")
 
     # Signal 2: MACD Cắt lên (Đảo chiều tăng)
     if last['MACD'] > last['Signal'] and prev['MACD'] <= prev['Signal']:
@@ -51,7 +51,7 @@ def check_signals(df):
     # Signal 3: Giá vượt MA20 (Bollinger Middle)
     if last['close'] > last['SMA20'] and prev['close'] <= prev['SMA20']:
         score += 2
-        reasons.append("Giá vượt MA20")
+        reasons.append("Price Cross MA20")
 
     # Signal 4: RSI vùng đẹp (Tăng từ vùng thấp)
     if 40 < last['RSI'] < 60 and last['RSI'] > prev['RSI']:

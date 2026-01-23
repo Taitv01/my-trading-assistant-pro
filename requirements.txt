@@ -4,3 +4,4 @@ requests
 matplotlib
 vnstock
 python-telegram-bot
+pytz
