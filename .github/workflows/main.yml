@@ -26,7 +26,7 @@ jobs:
 
     - name: Cài thư viện cần thiết
       run: |
-        pip install pandas requests vnstock
+        pip install pandas requests vnstock beautifulsoup4 lxml
 
     - name: Chạy Bot
       env: # Lấy bí mật từ Settings nạp vào code
