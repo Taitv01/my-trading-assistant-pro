@@ -28,8 +28,10 @@ jobs:
       run: |
         pip install pandas requests vnstock beautifulsoup4 packaging lxml ipython matplotlib
 
-    - name: Chạy Bot
-      env: # Lấy bí mật từ Settings nạp vào code
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: python bot.py
+    - name: Run Trading Bot
+  env:
+    TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+    TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+  run: |
+    # Chạy module bot nằm trong thư mục src
+    python -m src.bot
