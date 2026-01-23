@@ -1,96 +1,132 @@
-# analysis.py
 import pandas as pd
+import numpy as np
+import time
 import logging
 from vnstock import stock_historical_data
-from config import get_start_date, get_today_date
+# SỬA LỖI Ở DÒNG DƯỚI: Import đúng hàm get_date_range từ config mới
+from config import get_date_range, MIN_PRICE, MIN_VOL_VALUE, MIN_DAYS
 
-# Cấu hình logging để biết lỗi ở đâu
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Setup logging
+logging.basicConfig(filename='bot.log', level=logging.INFO, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 
-def get_market_data(symbol):
-    """Lấy dữ liệu an toàn với Error Handling"""
-    start_date = get_start_date(days_back=200) # Lấy 200 nến để tính MA50/200 chuẩn
-    today = get_today_date()
+def fetch_data_safe(symbol, retries=3):
+    """Lấy dữ liệu với cơ chế Retry"""
+    # SỬA LỖI: Gọi hàm mới trả về 2 giá trị (start, end)
+    start_date, end_date = get_date_range()
     
-    try:
-        df = stock_historical_data(symbol, start_date, today, "1D", "stock")
-        if df is None or df.empty or len(df) < 50:
-            logger.warning(f"⚠️ {symbol}: Dữ liệu không đủ hoặc lỗi API.")
-            return None
-        return df
-    except Exception as e:
-        logger.error(f"❌ Lỗi lấy data {symbol}: {str(e)}")
-        return None
+    for attempt in range(retries):
+        try:
+            # Lấy dữ liệu daily
+            df = stock_historical_data(symbol, start_date, end_date, "1D", "stock")
+            if df is not None and not df.empty and len(df) >= MIN_DAYS:
+                # Ép kiểu dữ liệu chuẩn
+                df['close'] = pd.to_numeric(df['close'])
+                df['volume'] = pd.to_numeric(df['volume'])
+                df['high'] = pd.to_numeric(df['high'])
+                df['low'] = pd.to_numeric(df['low'])
+                return df
+        except Exception as e:
+            logging.warning(f"⚠️ {symbol}: Lỗi lần {attempt+1}/{retries} - {str(e)}")
+            time.sleep(2) # Nghỉ 2s trước khi thử lại
+            
+    logging.error(f"❌ {symbol}: Fetch thất bại sau {retries} lần.")
+    return None
+
+def check_quality(df, symbol):
+    """Lọc rác: Chỉ giữ mã thanh khoản tốt & giá trị thực"""
+    last = df.iloc[-1]
+    avg_vol_20 = df['volume'].rolling(window=20).mean().iloc[-1]
+    avg_val_20 = avg_vol_20 * last['close'] # Giá trị giao dịch trung bình
+    
+    # 1. Lọc giá
+    if last['close'] < MIN_PRICE:
+        return False, f"Giá thấp ({last['close']})"
+    
+    # 2. Lọc thanh khoản
+    if avg_val_20 < MIN_VOL_VALUE:
+        return False, f"Thanh khoản thấp ({avg_val_20/1e6:.1f} tr)"
+        
+    return True, "OK"
 
 def calculate_indicators(df):
-    """Tính toán chỉ báo kỹ thuật"""
-    try:
-        # 1. RSI
-        delta = df['close'].diff()
-        gain = (delta.where(delta > 0, 0)).ewm(alpha=1/14, adjust=False).mean()
-        loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/14, adjust=False).mean()
-        df['RSI'] = 100 - (100 / (1 + gain/loss))
+    """Tính toán chỉ báo kỹ thuật (Vectorized)"""
+    # RSI (14)
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).ewm(alpha=1/14, adjust=False).mean()
+    loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/14, adjust=False).mean()
+    df['RSI'] = 100 - (100 / (1 + gain/loss))
 
-        # 2. MACD
-        exp1 = df['close'].ewm(span=12, adjust=False).mean()
-        exp2 = df['close'].ewm(span=26, adjust=False).mean()
-        df['MACD'] = exp1 - exp2
-        df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-        df['Hist'] = df['MACD'] - df['Signal']
+    # MACD (12, 26, 9)
+    exp1 = df['close'].ewm(span=12, adjust=False).mean()
+    exp2 = df['close'].ewm(span=26, adjust=False).mean()
+    df['MACD'] = exp1 - exp2
+    df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    df['Hist'] = df['MACD'] - df['Signal']
 
-        # 3. Moving Average & Bollinger Bands
-        df['MA20'] = df['close'].rolling(window=20).mean()
-        df['MA50'] = df['close'].rolling(window=50).mean()
-        std_dev = df['close'].rolling(window=20).std()
-        df['Upper'] = df['MA20'] + (std_dev * 2)
-        df['Lower'] = df['MA20'] - (std_dev * 2)
-
-        return df
-    except Exception as e:
-        logger.error(f"Lỗi tính chỉ báo: {e}")
-        return df
+    # Moving Averages
+    df['MA20'] = df['close'].rolling(window=20).mean()
+    df['MA50'] = df['close'].rolling(window=50).mean()
+    df['MA200'] = df['close'].rolling(window=200).mean()
+    
+    # Volume MA
+    df['VolMA20'] = df['volume'].rolling(window=20).mean()
+    
+    return df
 
 def score_stock(df):
-    """Hệ thống chấm điểm (Scoring System) để lọc nhiễu"""
-    if df is None: return 0, [], 0
+    """Hệ thống chấm điểm (Scoring System)"""
+    if df is None: return 0, {}, 0
     
     last = df.iloc[-1]
     prev = df.iloc[-2]
+    
     score = 0
-    reasons = []
-
-    # 1. Volume Breakout (Quan trọng nhất) - 2 Điểm
-    # Vol phiên nay > 1.3 lần TB 20 phiên
-    avg_vol_20 = df.iloc[-22:-2]['volume'].mean()
-    if avg_vol_20 > 0:
-        vol_ratio = last['volume'] / avg_vol_20
-        if vol_ratio >= 1.3:
-            score += 2.0
-            reasons.append(f"Vol nổ x{vol_ratio:.1f}")
+    breakdown = [] # Lưu lý do cộng điểm
     
-    # 2. Xu hướng giá (Price Action) - 1 Điểm
-    # Giá cắt lên MA20 hoặc giá nằm trên MA50
-    if last['close'] > last['MA20'] and prev['close'] <= prev['MA20']:
-        score += 1.0
-        reasons.append("Cắt lên MA20")
-    elif last['close'] > last['MA50']:
-        score += 0.5 # Điểm cộng xu hướng dài hạn
-
-    # 3. MACD (Đảo chiều) - 1.5 Điểm
-    if last['MACD'] > last['Signal'] and prev['MACD'] <= prev['Signal']:
-        score += 1.5
-        reasons.append("MACD Golden Cross")
-    elif last['MACD'] > last['Signal'] and last['Hist'] > prev['Hist']:
-         score += 0.5 # MACD đang mạnh lên
-
-    # 4. RSI (Lọc quá mua) - Trừ điểm nếu rủi ro
-    if last['RSI'] > 70:
-        score -= 2.0 # Quá mua -> Trừ điểm nặng để tránh đu đỉnh
-        reasons.append("RSI Quá mua (Cẩn thận)")
-    elif 40 < last['RSI'] < 60:
-        score += 0.5 # Vùng RSI an toàn để tăng
-
+    # 1. PRICE ACTION (Max 4đ)
     change_pct = (last['close'] - prev['close']) / prev['close'] * 100
-    
-    return score, reasons, change_pct
+    if change_pct >= 3.0:
+        score += 4
+        breakdown.append("🔥 Giá tăng mạnh >3%")
+    elif change_pct >= 1.0:
+        score += 2
+        breakdown.append("✅ Giá tăng >1%")
+    elif change_pct > 0:
+        score += 1
+        
+    # 2. VOLUME BREAKOUT (Max 5đ)
+    vol_ratio = last['volume'] / last['VolMA20'] if last['VolMA20'] > 0 else 0
+    if vol_ratio >= 2.0:
+        score += 5
+        breakdown.append(f"🔥 Vol nổ x{vol_ratio:.1f}")
+    elif vol_ratio >= 1.5:
+        score += 3
+        breakdown.append(f"⚡ Vol tăng x{vol_ratio:.1f}")
+    elif vol_ratio >= 1.3:
+        score += 1
+        
+    # 3. RSI TÍCH LŨY/ĐẢO CHIỀU (Max 3đ)
+    if 30 <= last['RSI'] <= 50:
+        score += 3
+        breakdown.append(f"💎 RSI tích lũy ({last['RSI']:.0f})")
+    elif 50 < last['RSI'] <= 65:
+        score += 2
+        breakdown.append("RSI xu hướng tăng")
+    elif last['RSI'] > 75:
+        score -= 2
+        breakdown.append("⚠️ RSI Quá mua")
+
+    # 4. MACD GOLDEN CROSS (Max 6đ)
+    if last['MACD'] > last['Signal'] and prev['MACD'] <= prev['Signal']:
+        score += 6
+        breakdown.append("🌟 MACD Cắt lên")
+    elif last['MACD'] > last['Signal'] and last['Hist'] > prev['Hist']:
+        score += 2 
+        
+    # 5. TREND ALIGNMENT (Max 2đ)
+    if last['close'] > last['MA50'] and last['MA50'] > last['MA200']:
+        score += 2
+        breakdown.append("📈 Uptrend dài hạn")
+
+    return score, breakdown, change_pct
