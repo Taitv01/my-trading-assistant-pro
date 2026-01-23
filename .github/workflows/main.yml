@@ -1,0 +1,35 @@
+name: Bot Chung Khoan Auto
+
+on:
+  schedule:
+    # Chạy định kỳ 15 phút một lần
+    # Lưu ý: GitHub dùng giờ UTC.
+    # 9:00 VN = 2:00 UTC. 14:45 VN = 7:45 UTC.
+    # Cron dưới đây chạy từ Thứ 2 đến Thứ 6, từ 2h sáng đến 8h sáng UTC (tức 9h-15h VN)
+    - cron: '*/15 2-8 * * 1-5'
+  
+  # Cho phép bấm nút chạy thủ công để test
+  workflow_dispatch:
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Tải code về máy ảo
+      uses: actions/checkout@v3
+
+    - name: Cài đặt Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Cài thư viện cần thiết
+      run: |
+        pip install pandas requests vnstock
+
+    - name: Chạy Bot
+      env: # Lấy bí mật từ Settings nạp vào code
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: python bot.py
