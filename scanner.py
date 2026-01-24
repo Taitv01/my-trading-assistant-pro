@@ -1,12 +1,13 @@
 """
 Scanner Entry Point - Supports Quick, Full, and Discovery Scan modes
 Usage:
-    python scanner.py --mode quick      # Scan VN30 only (~1 min)
+    python scanner.py --mode quick      # Scan VN30 only (~2 min)
     python scanner.py --mode full       # Scan top 132 liquid stocks (~6 min)
     python scanner.py --mode discovery  # Scan entire market (~70 min, once daily)
 """
 import argparse
 import sys
+import time
 from src.config import WATCHLIST, MIN_SCORE
 from src.data_fetcher import fetch_data
 from src.indicators import calculate_indicators, check_signals
@@ -15,18 +16,29 @@ from src.notifier import send_telegram_alert, send_summary_report, send_discover
 from src.market_scanner import analyze_market, format_top_stocks_report
 from src.discovery_scanner import run_discovery_scan, format_discovery_report
 
+# Rate limiting: vnstock Guest limit is 20 requests/minute
+# 4 second delay = 15 requests/min (safe margin, leaves buffer for retries)
+API_DELAY_SECONDS = 4.0
+
 
 def quick_scan():
     """Quick Scan - VN30 stocks only (Original logic)"""
     print("QUICK SCAN - Scanning VN30...")
     print(f"Watchlist: {len(WATCHLIST)} stocks")
+    print(f"Rate limit: {API_DELAY_SECONDS}s delay per request")
+    estimated_time = len(WATCHLIST) * API_DELAY_SECONDS / 60
+    print(f"Estimated time: {estimated_time:.1f} minutes")
 
     signal_count = 0
 
-    for symbol in WATCHLIST:
+    for i, symbol in enumerate(WATCHLIST):
+        if (i + 1) % 10 == 0:
+            print(f"Progress: {i + 1}/{len(WATCHLIST)}")
+        
         # 1. Fetch data
         df = fetch_data(symbol)
         if df is None:
+            time.sleep(API_DELAY_SECONDS)
             continue
 
         # 2. Calculate indicators
@@ -34,6 +46,7 @@ def quick_scan():
 
         # 3. Filter (liquidity/price)
         if not is_investable(df):
+            time.sleep(API_DELAY_SECONDS)
             continue
 
         # 4. Check signals
@@ -46,6 +59,9 @@ def quick_scan():
             signal_count += 1
         else:
             print(f"zzz {symbol}: {score} points (Ignored)")
+        
+        # Rate limiting delay
+        time.sleep(API_DELAY_SECONDS)
 
     if signal_count == 0:
         print("No buy signals found.")
