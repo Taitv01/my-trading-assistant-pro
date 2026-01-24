@@ -10,7 +10,7 @@ from vnstock import Listing, Quote
 from .data_fetcher import fetch_data
 from .indicators import calculate_indicators, check_signals
 from .filters import is_investable
-from .config import MIN_SCORE
+from .config import MIN_SCORE, UPCOM_HIGH_LIQUIDITY_THRESHOLD
 
 # Rate limiting
 API_DELAY_SECONDS = 2.5
@@ -19,19 +19,42 @@ API_DELAY_SECONDS = 2.5
 DISCOVERY_CACHE_FILE = "discovery_cache.json"
 
 
-def get_all_symbols_with_industry():
-    """Get all symbols - industry mapping will be done via analysis"""
+def get_all_symbols_with_exchange():
+    """
+    Get all symbols with exchange info (HOSE, HNX, UPCOM).
+    Returns dict mapping symbol -> exchange
+    """
     try:
         listing = Listing(source='VCI')
-        df = listing.all_symbols()
-        return df['symbol'].tolist()
+        df = listing.symbols_by_exchange()
+        
+        # 'exchange' column contains: HSX, HNX, UPCOM
+        if 'exchange' in df.columns and 'symbol' in df.columns:
+            # Map HSX to HOSE for consistency
+            exchange_map = {'HSX': 'HOSE', 'HNX': 'HNX', 'UPCOM': 'UPCOM'}
+            result = {}
+            for _, row in df.iterrows():
+                symbol = row['symbol']
+                exchange = exchange_map.get(row['exchange'], row['exchange'])
+                result[symbol] = exchange
+            return result
+        else:
+            print(f"Warning: Expected columns not found. Got: {df.columns.tolist()}")
+            all_symbols = df['symbol'].tolist() if 'symbol' in df.columns else []
+            return {s: 'UNKNOWN' for s in all_symbols}
     except Exception as e:
         print(f"Error fetching symbols: {e}")
-        return []
+        return {}
 
 
-def analyze_stock_with_details(symbol):
-    """Analyze stock and return detailed data including volume metrics"""
+def analyze_stock_with_details(symbol, exchange='UNKNOWN'):
+    """
+    Analyze stock and return detailed data including volume metrics.
+    
+    Args:
+        symbol: Stock symbol
+        exchange: Exchange name (HOSE, HNX, UPCOM)
+    """
     try:
         df = fetch_data(symbol)
         if df is None or len(df) < 20:
@@ -47,6 +70,10 @@ def analyze_stock_with_details(symbol):
         # Check if investable
         investable = is_investable(df)
         
+        # UPCOM filtering: only include if high liquidity
+        if exchange == 'UPCOM' and avg_value_20 < UPCOM_HIGH_LIQUIDITY_THRESHOLD:
+            return None  # Skip low-liquidity UPCOM stocks
+        
         # Get signal score
         score, reasons = check_signals(df)
         
@@ -55,6 +82,7 @@ def analyze_stock_with_details(symbol):
         
         return {
             'symbol': symbol,
+            'exchange': exchange,  # Add exchange info
             'score': score,
             'reasons': reasons,
             'price': last['close'],
@@ -83,11 +111,18 @@ def run_discovery_scan():
     print(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*50)
     
-    # Get all symbols
-    all_symbols = get_all_symbols_with_industry()
+    # Get all symbols with exchange info
+    symbol_exchange_map = get_all_symbols_with_exchange()
+    all_symbols = list(symbol_exchange_map.keys())
     total = len(all_symbols)
     print(f"Total symbols to scan: {total}")
     print(f"Estimated time: {total * API_DELAY_SECONDS / 60:.1f} minutes")
+    
+    # Count by exchange
+    exchange_counts = {}
+    for ex in symbol_exchange_map.values():
+        exchange_counts[ex] = exchange_counts.get(ex, 0) + 1
+    print(f"Exchange breakdown: {exchange_counts}")
     
     # Analyze all stocks
     results = []
@@ -97,7 +132,8 @@ def run_discovery_scan():
         if (i + 1) % 50 == 0:
             print(f"Progress: {i + 1}/{total} ({(i+1)*100/total:.1f}%)")
         
-        result = analyze_stock_with_details(symbol)
+        exchange = symbol_exchange_map.get(symbol, 'UNKNOWN')
+        result = analyze_stock_with_details(symbol, exchange)
         if result:
             results.append(result)
             
@@ -163,24 +199,25 @@ def run_discovery_scan():
 
 
 def format_discovery_report(report):
-    """Format discovery report for Telegram"""
+    """Format discovery report for console output"""
     lines = [
         "DISCOVERY SCAN REPORT",
         f"Scanned: {report['total_scanned']} stocks",
-        "=" * 35,
+        "=" * 40,
         "",
         "TOP 10 STOCKS BY SIGNAL:",
     ]
     
     for i, stock in enumerate(report['top_20_stocks'][:10], 1):
-        reasons = ", ".join(stock['reasons']) if stock['reasons'] else "-"
-        lines.append(f"{i}. {stock['symbol']} | Score:{stock['score']} | RSI:{stock['rsi']:.0f}")
+        exchange = stock.get('exchange', 'N/A')
+        lines.append(f"{i}. [{exchange}] {stock['symbol']} | Score:{stock['score']} | RSI:{stock['rsi']:.0f}")
     
     lines.append("")
     lines.append("VOLUME SPIKE ALERTS:")
     
     for i, stock in enumerate(report['volume_spikes'][:5], 1):
-        lines.append(f"{i}. {stock['symbol']} Vol x{stock['vol_ratio']:.1f}")
+        exchange = stock.get('exchange', 'N/A')
+        lines.append(f"{i}. [{exchange}] {stock['symbol']} Vol x{stock['vol_ratio']:.1f}")
     
     lines.append("")
     lines.append("TOP INDUSTRIES BY VALUE:")

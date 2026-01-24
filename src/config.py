@@ -18,3 +18,7 @@ MIN_PRICE = 10000                 # Giá > 10k
 
 # --- NGƯỠNG TÍN HIỆU ---
 MIN_SCORE = 4  # Điểm tối thiểu để báo tin
+
+# --- LỌC THANH KHOẢN UPCOM ---
+# Chỉ cảnh báo mã UPCOM có giao dịch >= 5 tỷ VNĐ/phiên
+UPCOM_HIGH_LIQUIDITY_THRESHOLD = 5_000_000_000
