@@ -83,9 +83,7 @@ def analyze_market(symbols=None, max_stocks=None):
     if max_stocks:
         symbols = symbols[:max_stocks]
     
-    print(f"Analyzing {len(symbols)} symbols (with {API_DELAY_SECONDS}s delay per request)...")
-    estimated_time = len(symbols) * API_DELAY_SECONDS / 60
-    print(f"Estimated time: {estimated_time:.1f} minutes")
+    print(f"Analyzing {len(symbols)} symbols...")
     
     results = []
     industry_scores = {}
@@ -98,9 +96,6 @@ def analyze_market(symbols=None, max_stocks=None):
         if result:
             results.append(result)
             # Track industry (for now, we don't have industry info, will add later)
-        
-        # Rate limiting delay
-        time.sleep(API_DELAY_SECONDS)
     
     # Sort by score descending
     results.sort(key=lambda x: x['score'], reverse=True)

@@ -8,7 +8,7 @@ Usage:
 import argparse
 import sys
 import time
-from src.config import WATCHLIST, MIN_SCORE
+from src.config import WATCHLIST, MIN_SCORE, VNSTOCK_API_KEY
 from src.data_fetcher import fetch_data
 from src.indicators import calculate_indicators, check_signals
 from src.filters import is_investable
@@ -16,9 +16,20 @@ from src.notifier import send_telegram_alert, send_summary_report, send_discover
 from src.market_scanner import analyze_market, format_top_stocks_report
 from src.discovery_scanner import run_discovery_scan, format_discovery_report
 
-# Rate limiting: vnstock Guest limit is 20 requests/minute
-# 4 second delay = 15 requests/min (safe margin, leaves buffer for retries)
-API_DELAY_SECONDS = 4.0
+# Default Rate limiting (Guest)
+API_DELAY_SECONDS = 3.0
+
+# Register API Key if available to increase limit
+if VNSTOCK_API_KEY:
+    try:
+        from vnstock import register_user
+        register_user(api_key=VNSTOCK_API_KEY)
+        # Community Tier: 60 req/min => 1s delay (safe margin 1.2s)
+        API_DELAY_SECONDS = 1.2 
+        print(f"✅ VNSTOCK API Key registered. Rate limit updated (Delay: {API_DELAY_SECONDS}s)")
+    except Exception as e:
+        print(f"⚠️ Warning: Could not register API key: {e}")
+
 
 
 def quick_scan():
@@ -59,9 +70,6 @@ def quick_scan():
             signal_count += 1
         else:
             print(f"zzz {symbol}: {score} points (Ignored)")
-        
-        # Rate limiting delay
-        time.sleep(API_DELAY_SECONDS)
 
     if signal_count == 0:
         print("No buy signals found.")

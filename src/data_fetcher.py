@@ -2,20 +2,30 @@ import pandas as pd
 from vnstock import Quote
 from datetime import datetime, timedelta
 import time
+from .config import DATA_SOURCE, VNSTOCK_API_KEY
+from .utils import RateLimiter
 
 # Rate Limit Settings
 MAX_RETRIES = 3
-INITIAL_BACKOFF = 25  # Chờ 25 giây khi gặp rate limit (API yêu cầu 22s)
+INITIAL_BACKOFF = 10 
+
+# Initialize Rate Limiter
+# Guest: 20 req/min | Community: 60 req/min
+_rpm = 55 if VNSTOCK_API_KEY else 18  # Safe margin
+_limiter = RateLimiter(requests_per_minute=_rpm)
 
 def fetch_data(symbol, days=365):
-    """Lấy dữ liệu lịch sử 1 năm qua - Có retry khi gặp rate limit"""
+    """Lấy dữ liệu lịch sử - Có rate limit & retry"""
     for attempt in range(MAX_RETRIES):
         try:
             end_date = datetime.now().strftime('%Y-%m-%d')
             start_date = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
 
-            # Lấy dữ liệu daily using new API (default source='VCI')
-            quote = Quote(symbol=symbol, source='VCI')
+            # Wrapper for Rate Limiter
+            _limiter.wait()
+
+            # Lấy dữ liệu daily using new API
+            quote = Quote(symbol=symbol, source=DATA_SOURCE)
             df = quote.history(start=start_date, end=end_date, interval='1D')
 
             if df is None or df.empty or len(df) < 50:

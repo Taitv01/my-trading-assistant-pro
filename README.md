@@ -20,16 +20,24 @@
 - **RSI (14)** - Relative Strength Index
 - **MACD (12, 26, 9)** - Moving Average Convergence Divergence
 - **Bollinger Bands (20, 2)** - Dải băng Bollinger
+- **Stochastic (14, 3, 3)** - Động lượng qua bán/quá mua (Mới)
+- **ADX (14)** - Xác định sức mạnh xu hướng (Mới)
+- **OBV** - Phân tích dòng tiền tích lũy (Mới)
+- **MFI (14)** - Chỉ số dòng tiền kết hợp giá & vol (Mới)
 - **Volume Breakout** - Phát hiện đột biến khối lượng
 
 ### Hệ thống tính điểm
 
 | Tín hiệu                      | Điểm |
 | ----------------------------- | ---- |
-| Volume đột biến (>1.3x MA20)  | +2   |
 | MACD Golden Cross             | +3   |
 | Giá vượt MA20                 | +2   |
+| Volume đột biến               | +2   |
+| Stochastic cắt lên            | +2   |
 | RSI trong vùng tối ưu (40-60) | +1   |
+| RSI xu hướng tăng             | +1   |
+| ADX > 25 (Trend mạnh)         | +1   |
+| OBV/MFI tích cực              | +1   |
 
 > **Ngưỡng cảnh báo:** Tối thiểu **4 điểm**
 

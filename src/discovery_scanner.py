@@ -160,7 +160,6 @@ def run_discovery_scan():
     all_symbols = list(symbol_exchange_map.keys())
     total = len(all_symbols)
     print(f"Total symbols to scan: {total}")
-    print(f"Estimated time: {total * API_DELAY_SECONDS / 60:.1f} minutes")
     
     # Count by exchange
     exchange_counts = {}
@@ -201,8 +200,7 @@ def run_discovery_scan():
             results.append(result)
             
             # Aggregate by first letter (pseudo-industry grouping)
-            # In production, this would use actual ICB industry codes
-            industry_key = symbol[0]  # Simplified grouping
+            industry_key = symbol[0]
             industry_volumes[industry_key]['total_value'] += result['avg_value_20']
             industry_volumes[industry_key]['count'] += 1
             if result['has_signal']:
@@ -211,8 +209,6 @@ def run_discovery_scan():
         # Save checkpoint every BATCH_SIZE stocks
         if (i + 1) % BATCH_SIZE == 0:
             save_checkpoint(i, results, symbol_exchange_map)
-        
-        time.sleep(API_DELAY_SECONDS)
     
     print(f"\nAnalyzed {len(results)} stocks successfully")
     

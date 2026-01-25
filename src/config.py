@@ -4,6 +4,10 @@ import os
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN')
 CHAT_ID = os.environ.get('TELEGRAM_CHAT_ID')
 
+# --- VNSTOCK CONFIG ---
+VNSTOCK_API_KEY = os.environ.get('VNSTOCK_API_KEY', 'vnstock_403a1c3ae1fcce8c5d68dd50aabd5c39')
+DATA_SOURCE = 'VCI'  # Nguồn dữ liệu ưu tiên
+
 # --- DANH MỤC THEO DÕI (VN30 + Mã Hot) ---
 WATCHLIST = [
     "ACB", "BCM", "BID", "BVH", "CTG", "FPT", "GAS", "GVR", "HDB", "HPG",

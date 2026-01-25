@@ -1,7 +1,7 @@
-pandas
-numpy
-requests
-matplotlib
-vnstock
-python-telegram-bot
+pandas>=2.0.0
+numpy>=1.24.0
+requests>=2.28.0
+matplotlib>=3.7.0
+vnstock>=3.4.0
+python-telegram-bot>=20.0
 pytz
