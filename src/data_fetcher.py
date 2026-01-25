@@ -35,17 +35,31 @@ def fetch_data(symbol, days=365):
 
             return df
             
+        except ValueError as e:
+            # ValueError: Invalid data from API - skip immediately, no retry
+            # This happens when vnstock returns malformed data
+            return None
+            
         except Exception as e:
             error_str = str(e).lower()
             
-            # Kiểm tra nếu là lỗi rate limit
+            # Check for RetryError with ValueError inside - skip immediately
+            if 'retryerror' in error_str and 'valueerror' in error_str:
+                # RetryError wrapping ValueError - skip, no retry
+                return None
+            
+            # Check for other non-recoverable errors - skip immediately
+            if 'valueerror' in error_str or 'keyerror' in error_str or 'typeerror' in error_str:
+                return None
+            
+            # Kiểm tra nếu là lỗi rate limit - có thể retry
             if 'rate limit' in error_str or 'too many requests' in error_str or '429' in error_str:
                 backoff_time = INITIAL_BACKOFF * (2 ** attempt)  # Exponential backoff
                 print(f"⚠️ Rate limit hit for {symbol}. Retry {attempt + 1}/{MAX_RETRIES} after {backoff_time}s...")
                 time.sleep(backoff_time)
             else:
-                # Lỗi khác - không retry
-                print(f"Error fetching data for {symbol}: {e}")
+                # Lỗi khác không xác định - skip
+                print(f"Error fetching data for {symbol}: {type(e).__name__}")
                 return None
                 
     # Hết số lần retry

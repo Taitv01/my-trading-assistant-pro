@@ -4,6 +4,7 @@ Runs once daily at 13:30 VN time
 """
 import time
 import json
+import os
 from datetime import datetime
 from collections import defaultdict
 from vnstock import Listing, Quote
@@ -12,11 +13,54 @@ from .indicators import calculate_indicators, check_signals
 from .filters import is_investable
 from .config import MIN_SCORE, UPCOM_HIGH_LIQUIDITY_THRESHOLD
 
-# Rate limiting
-API_DELAY_SECONDS = 2.5
+# Rate limiting - Increased to 3s for better stability
+API_DELAY_SECONDS = 3.0
+
+# Batch processing settings
+BATCH_SIZE = 100  # Save checkpoint every 100 stocks
+CHECKPOINT_FILE = "discovery_checkpoint.json"
 
 # Output file to store discovered stocks
 DISCOVERY_CACHE_FILE = "discovery_cache.json"
+
+
+def save_checkpoint(index, results, symbol_exchange_map):
+    """Save current progress to checkpoint file"""
+    checkpoint = {
+        'last_index': index,
+        'results': results,
+        'timestamp': datetime.now().isoformat()
+    }
+    try:
+        with open(CHECKPOINT_FILE, 'w', encoding='utf-8') as f:
+            json.dump(checkpoint, f, ensure_ascii=False, default=str)
+        print(f"💾 Checkpoint saved at index {index}")
+    except Exception as e:
+        print(f"Warning: Could not save checkpoint: {e}")
+
+
+def load_checkpoint():
+    """Load previous checkpoint if exists"""
+    if not os.path.exists(CHECKPOINT_FILE):
+        return None
+    try:
+        with open(CHECKPOINT_FILE, 'r', encoding='utf-8') as f:
+            checkpoint = json.load(f)
+        print(f"📂 Loaded checkpoint from index {checkpoint['last_index']} ({checkpoint['timestamp']})")
+        return checkpoint
+    except Exception as e:
+        print(f"Warning: Could not load checkpoint: {e}")
+        return None
+
+
+def clear_checkpoint():
+    """Clear checkpoint after successful completion"""
+    if os.path.exists(CHECKPOINT_FILE):
+        try:
+            os.remove(CHECKPOINT_FILE)
+            print("🧹 Checkpoint cleared")
+        except Exception as e:
+            print(f"Warning: Could not clear checkpoint: {e}")
 
 
 def get_all_symbols_with_exchange():
@@ -124,11 +168,30 @@ def run_discovery_scan():
         exchange_counts[ex] = exchange_counts.get(ex, 0) + 1
     print(f"Exchange breakdown: {exchange_counts}")
     
-    # Analyze all stocks
+    # Try to load checkpoint
+    checkpoint = load_checkpoint()
+    start_index = 0
     results = []
+    
+    if checkpoint:
+        start_index = checkpoint['last_index'] + 1
+        results = checkpoint['results']
+        print(f"▶️ Resuming from index {start_index} with {len(results)} previous results")
+    
+    # Analyze all stocks
     industry_volumes = defaultdict(lambda: {'total_value': 0, 'count': 0, 'signals': 0})
     
-    for i, symbol in enumerate(all_symbols):
+    # Rebuild industry_volumes from existing results
+    for result in results:
+        industry_key = result['symbol'][0]
+        industry_volumes[industry_key]['total_value'] += result['avg_value_20']
+        industry_volumes[industry_key]['count'] += 1
+        if result['has_signal']:
+            industry_volumes[industry_key]['signals'] += 1
+    
+    for i in range(start_index, total):
+        symbol = all_symbols[i]
+        
         if (i + 1) % 50 == 0:
             print(f"Progress: {i + 1}/{total} ({(i+1)*100/total:.1f}%)")
         
@@ -144,6 +207,10 @@ def run_discovery_scan():
             industry_volumes[industry_key]['count'] += 1
             if result['has_signal']:
                 industry_volumes[industry_key]['signals'] += 1
+        
+        # Save checkpoint every BATCH_SIZE stocks
+        if (i + 1) % BATCH_SIZE == 0:
+            save_checkpoint(i, results, symbol_exchange_map)
         
         time.sleep(API_DELAY_SECONDS)
     
@@ -187,11 +254,12 @@ def run_discovery_scan():
         'top_industries': industry_ranking
     }
     
-    # Save to cache file
     try:
         with open(DISCOVERY_CACHE_FILE, 'w', encoding='utf-8') as f:
             json.dump(report, f, ensure_ascii=False, indent=2, default=str)
         print(f"Discovery report saved to {DISCOVERY_CACHE_FILE}")
+        # Clear checkpoint after successful completion
+        clear_checkpoint()
     except Exception as e:
         print(f"Error saving cache: {e}")
     
