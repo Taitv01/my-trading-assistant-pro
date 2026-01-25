@@ -26,9 +26,9 @@ if VNSTOCK_API_KEY:
         register_user(api_key=VNSTOCK_API_KEY)
         # Community Tier: 60 req/min => 1s delay (safe margin 1.2s)
         API_DELAY_SECONDS = 1.2 
-        print(f"✅ VNSTOCK API Key registered. Rate limit updated (Delay: {API_DELAY_SECONDS}s)")
+        print(f"[OK] VNSTOCK API Key registered. Rate limit updated (Delay: {API_DELAY_SECONDS}s)")
     except Exception as e:
-        print(f"⚠️ Warning: Could not register API key: {e}")
+        print(f"[WARN] Warning: Could not register API key: {e}")
 
 
 
