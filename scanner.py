@@ -12,7 +12,8 @@ from src.config import WATCHLIST, MIN_SCORE, VNSTOCK_API_KEY
 from src.data_fetcher import fetch_data
 from src.indicators import calculate_indicators, check_signals
 from src.filters import is_investable
-from src.notifier import send_telegram_alert, send_summary_report, send_discovery_report
+# --- CẬP NHẬT: Đổi send_telegram_alert thành send_telegram_message ---
+from src.notifier import send_telegram_message, send_summary_report, send_discovery_report
 from src.market_scanner import analyze_market, format_top_stocks_report
 from src.discovery_scanner import run_discovery_scan, format_discovery_report
 
@@ -31,7 +32,6 @@ if VNSTOCK_API_KEY:
         print(f"[WARN] Warning: Could not register API key: {e}")
 
 
-
 def quick_scan():
     """Quick Scan - VN30 stocks only (Original logic)"""
     print("QUICK SCAN - Scanning VN30...")
@@ -43,33 +43,42 @@ def quick_scan():
     signal_count = 0
 
     for i, symbol in enumerate(WATCHLIST):
-        if (i + 1) % 10 == 0:
-            print(f"Progress: {i + 1}/{len(WATCHLIST)}")
+        # In tiến độ
+        if (i + 1) % 5 == 0:
+            print(f"Progress: {i + 1}/{len(WATCHLIST)}...")
         
-        # 1. Fetch data
-        df = fetch_data(symbol)
-        if df is None:
-            time.sleep(API_DELAY_SECONDS)
-            continue
+        try:
+            # 1. Fetch data
+            df = fetch_data(symbol)
+            if df is None:
+                time.sleep(API_DELAY_SECONDS)
+                continue
 
-        # 2. Calculate indicators
-        df = calculate_indicators(df)
+            # 2. Calculate indicators
+            df = calculate_indicators(df)
 
-        # 3. Filter (liquidity/price)
-        if not is_investable(df):
-            time.sleep(API_DELAY_SECONDS)
-            continue
+            # 3. Filter (liquidity/price)
+            if not is_investable(df):
+                time.sleep(API_DELAY_SECONDS)
+                continue
 
-        # 4. Check signals
-        score, reasons = check_signals(df)
+            # 4. Check signals
+            score, reasons = check_signals(df)
 
-        # 5. Alert if score meets threshold
-        if score >= MIN_SCORE:
-            print(f"SIGNAL: {symbol} (Score: {score})")
-            send_telegram_alert(symbol, score, reasons, df.iloc[-1]['close'], df)
-            signal_count += 1
-        else:
-            print(f"zzz {symbol}: {score} points (Ignored)")
+            # 5. Alert if score meets threshold
+            if score >= MIN_SCORE:
+                print(f"🔥 SIGNAL: {symbol} (Score: {score})")
+                # --- CẬP NHẬT: Gọi đúng tên hàm mới ---
+                send_telegram_message(symbol, score, reasons, df.iloc[-1]['close'], df)
+                signal_count += 1
+            else:
+                print(f"   {symbol}: {score} points (Ignored)")
+        
+        except Exception as e:
+            print(f"Error scanning {symbol}: {e}")
+        
+        # --- CẬP NHẬT: Luôn nghỉ để tránh lỗi 429 Too Many Requests ---
+        time.sleep(API_DELAY_SECONDS)
 
     if signal_count == 0:
         print("No buy signals found.")
@@ -81,6 +90,7 @@ def full_scan():
     """Full Scan - Top liquid stocks"""
     print("FULL SCAN - Scanning top liquid stocks...")
     
+    # Hàm này gọi logic bên market_scanner.py (đã xử lý delay bên đó)
     top_stocks, top_industries = analyze_market()
     
     # Format and send report
@@ -97,6 +107,7 @@ def discovery_scan():
     """Discovery Scan - Full market analysis for new opportunities"""
     print("DISCOVERY SCAN - Analyzing entire market...")
     
+    # Hàm này gọi logic bên discovery_scanner.py (đã xử lý delay bên đó)
     report = run_discovery_scan()
     
     # Format and print
