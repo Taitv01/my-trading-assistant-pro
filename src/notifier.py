@@ -1,30 +1,41 @@
+import matplotlib
+matplotlib.use('Agg')  # <--- QUAN TRỌNG: Dòng này giúp chạy trên GitHub Actions không bị lỗi
 import matplotlib.pyplot as plt
 import requests
 import os
+from datetime import datetime
+import pytz # Cần thêm thư viện này trong requirements.txt nếu chưa có
 from .config import TELEGRAM_TOKEN, CHAT_ID
 
 def generate_chart(symbol, df):
     """Vẽ biểu đồ mini nhanh"""
-    data = df.tail(60) # 60 phiên gần nhất
+    try:
+        # Lấy 60 phiên gần nhất, copy để tránh warning SettingWithCopy
+        data = df.tail(60).copy() 
+        
+        plt.figure(figsize=(10, 6))
 
-    plt.figure(figsize=(10, 6))
+        # Vẽ Giá và Bollinger Bands
+        plt.plot(data['time'], data['close'], label='Giá', color='black')
+        if 'Upper' in data.columns and 'Lower' in data.columns:
+            plt.plot(data['time'], data['Upper'], color='green', linestyle='--', alpha=0.5)
+            plt.plot(data['time'], data['Lower'], color='red', linestyle='--', alpha=0.5)
+            plt.fill_between(data['time'], data['Upper'], data['Lower'], color='gray', alpha=0.1)
 
-    # Vẽ Giá và Bollinger Bands
-    plt.plot(data['time'], data['close'], label='Giá', color='black')
-    plt.plot(data['time'], data['Upper'], color='green', linestyle='--', alpha=0.5)
-    plt.plot(data['time'], data['Lower'], color='red', linestyle='--', alpha=0.5)
-    plt.fill_between(data['time'], data['Upper'], data['Lower'], color='gray', alpha=0.1)
+        plt.title(f"Biểu đồ {symbol} (2 tháng)")
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
 
-    plt.title(f"Biểu đồ {symbol} (2 tháng)")
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
+        filename = f"{symbol}_chart.png"
+        plt.savefig(filename)
+        plt.close()
+        return filename
+    except Exception as e:
+        print(f"Lỗi vẽ biểu đồ {symbol}: {e}")
+        return None
 
-    filename = f"{symbol}_chart.png"
-    plt.savefig(filename)
-    plt.close()
-    return filename
-
-def send_telegram_alert(symbol, score, reasons, price, df):
+# --- ĐÃ ĐỔI TÊN HÀM TỪ send_telegram_alert THÀNH send_telegram_message ---
+def send_telegram_message(symbol, score, reasons, price, df):
     if not TELEGRAM_TOKEN or not CHAT_ID: return
 
     # Tạo nội dung tin nhắn
@@ -42,21 +53,32 @@ def send_telegram_alert(symbol, score, reasons, price, df):
 
     # Gửi ảnh kèm text
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-    with open(chart_path, 'rb') as img:
+    
+    # Nếu vẽ chart thành công thì gửi ảnh
+    if chart_path and os.path.exists(chart_path):
+        with open(chart_path, 'rb') as img:
+            payload = {
+                'chat_id': CHAT_ID, 
+                'caption': msg, 
+                'parse_mode': 'Markdown'
+            }
+            files = {'photo': img}
+            try:
+                requests.post(url, data=payload, files=files)
+            except Exception as e:
+                print(f"Lỗi gửi tin Telegram: {e}")
+        
+        # Dọn dẹp ảnh
+        os.remove(chart_path)
+    else:
+        # Nếu lỗi chart thì gửi text thường
+        url_text = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
         payload = {
-            'chat_id': CHAT_ID, 
-            'caption': msg, 
+            'chat_id': CHAT_ID,
+            'text': msg,
             'parse_mode': 'Markdown'
         }
-        files = {'photo': img}
-        try:
-            requests.post(url, data=payload, files=files)
-        except Exception as e:
-            print(f"Lỗi gửi tin Telegram: {e}")
-
-    # Dọn dẹp ảnh
-    if os.path.exists(chart_path):
-        os.remove(chart_path)
+        requests.post(url_text, data=payload)
 
 
 def send_summary_report(top_stocks, top_industries):
@@ -95,9 +117,7 @@ def send_summary_report(top_stocks, top_industries):
     }
     try:
         response = requests.post(url, data=payload)
-        if response.status_code == 200:
-            print("Summary report sent to Telegram.")
-        else:
+        if response.status_code != 200:
             print(f"Telegram error: {response.text}")
     except Exception as e:
         print(f"Error sending Telegram message: {e}")
@@ -131,14 +151,15 @@ def send_discovery_report(report):
         print("Telegram not configured, skipping notification.")
         return
     
-    from datetime import datetime
-    scan_time = datetime.now().strftime("%d/%m/%Y %H:%M")
+    # Lấy giờ Việt Nam
+    tz_vn = pytz.timezone('Asia/Ho_Chi_Minh')
+    scan_time = datetime.now(tz_vn).strftime("%d/%m/%Y %H:%M")
     
     # Build professional message
     lines = [
         "👋 **Chào nhà đầu tư!**",
         f"📊 **BẢN TIN THỊ TRƯỜNG - {scan_time}**",
-        f"_Quét {report['total_scanned']:,} mã - Antigravity Bot_",
+        f"_Quét {report.get('total_scanned', 0):,} mã - Antigravity Bot_",
         "",
         "━━━━━━━━━━━━━━━━━━━━━━━━━━",
         "🚀 **CƠ HỘI TIỀM NĂNG (Top 10)**",
@@ -146,7 +167,7 @@ def send_discovery_report(report):
     ]
     
     # Group by exchange for better overview
-    top_stocks = report['top_20_stocks'][:10]
+    top_stocks = report.get('top_20_stocks', [])[:10]
     
     if not top_stocks:
         lines.append("_Không có tín hiệu mua mạnh trong phiên._")
