@@ -2,23 +2,22 @@ name: Quick Scan (VN30)
 
 on:
   schedule:
-    # Every 30 minutes during trading hours (9:00-15:00 Vietnam Time = UTC+7)
-    # Converted to UTC: 2:00-8:00 UTC
-    - cron: '0,30 2-8 * * 1-5'
-  workflow_dispatch:  # Manual trigger
+    # Chạy từ 9:15 đến 14:45 VN (tức 02:15 đến 07:45 UTC)
+    # Cron: Phút | Giờ (UTC) | ...
+    - cron: '15,45 2-7 * * 1-5' # Chạy phút 15 và 45, từ 2h đến 7h UTC, T2-T6
+  workflow_dispatch:
 
 jobs:
-  quick-scan:
+  run-scanner:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.9'
 
       - name: Install dependencies
         run: |
@@ -29,5 +28,4 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          python scanner.py --mode quick
+        run: python scanner.py --mode quick
