@@ -2,23 +2,23 @@ name: Discovery Scan (Full Market)
 
 on:
   schedule:
-    # At 13:30 Vietnam Time (UTC+7) = 6:30 UTC
-    - cron: "30 6 * * 1-5"
-  workflow_dispatch: # Manual trigger
+    # 15:30 VN -> 08:30 UTC (Quét sau khi hết giờ giao dịch cho an toàn)
+    - cron: '30 8 * * 1-5'
+  workflow_dispatch:
 
 jobs:
-  discovery-scan:
+  run-scanner:
     runs-on: ubuntu-latest
-    timeout-minutes: 120 # Discovery scan may take up to 90 mins
-
+    # Tăng timeout lên 360 phút (6 tiếng) để tránh bị ngắt giữa chừng
+    timeout-minutes: 360 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: "3.11"
+          python-version: '3.9'
 
       - name: Install dependencies
         run: |
@@ -29,7 +29,4 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          VNSTOCK_API_KEY: ${{ secrets.VNSTOCK_API_KEY }}
-          VNSTOCK_DATA_SOURCE: VCI
-        run: |
-          python scanner.py --mode discovery
+        run: python scanner.py --mode discovery
