@@ -1,27 +1,26 @@
-name: Full Scan (All Markets)
+name: Full Scan (Liquid Stocks)
 
 on:
   schedule:
-    # At 10:00, 13:00, 15:00 Vietnam Time (UTC+7)
-    # Converted to UTC: 3:00, 6:00, 8:00 UTC
-    - cron: '0 3 * * 1-5'   # 10:00 VN
-    - cron: '0 6 * * 1-5'   # 13:00 VN
-    - cron: '0 8 * * 1-5'   # 15:00 VN
-  workflow_dispatch:  # Manual trigger
+    # 10:00 VN -> 03:00 UTC
+    - cron: '0 3 * * 1-5'
+    # 11:30 VN -> 04:30 UTC
+    - cron: '30 4 * * 1-5'
+    # 14:00 VN -> 07:00 UTC
+    - cron: '0 7 * * 1-5'
+  workflow_dispatch:
 
 jobs:
-  full-scan:
+  run-scanner:
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # Full scan may take up to 45 mins
-    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.9'
 
       - name: Install dependencies
         run: |
@@ -32,5 +31,4 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          python scanner.py --mode full
+        run: python scanner.py --mode full
