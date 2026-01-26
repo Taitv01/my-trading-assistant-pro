@@ -21,7 +21,7 @@ MIN_VOLUME_VALUE = 1_000_000_000  # 1 Tỷ VNĐ/phiên
 MIN_PRICE = 10000                 # Giá > 10k
 
 # --- NGƯỠNG TÍN HIỆU ---
-MIN_SCORE = 4  # Điểm tối thiểu để báo tin
+MIN_SCORE = 7  # Điểm tối thiểu để báo tin (> 6 điểm)
 
 # --- LỌC THANH KHOẢN UPCOM ---
 # Chỉ cảnh báo mã UPCOM có giao dịch >= 5 tỷ VNĐ/phiên

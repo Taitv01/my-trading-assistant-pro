@@ -147,7 +147,7 @@ def check_signals(df: pd.DataFrame) -> tuple:
     if last['VolMA20'] > 0:
         vol_ratio = last['volume'] / last['VolMA20']
         if vol_ratio > 1.3:
-            score += 2
+            score += 3
             reasons.append(f"Vol đột biến (x{vol_ratio:.1f})")
 
     # Signal 2: Giá vượt MA20 (Bollinger Middle)
@@ -162,18 +162,18 @@ def check_signals(df: pd.DataFrame) -> tuple:
         score += 3
         reasons.append("MACD Golden Cross")
 
-    # Signal 4: RSI vùng đẹp (40-60 & đang tăng)
-    if 40 < last['RSI'] < 60 and last['RSI'] > prev['RSI']:
-        score += 1
-        reasons.append("RSI xu hướng tăng")
+    # Signal 4: RSI vùng đẹp (45-65 & đang tăng)
+    if 45 <= last['RSI'] <= 65 and last['RSI'] > prev['RSI']:
+        score += 2
+        reasons.append(f"RSI tăng ({last['RSI']:.0f})")
 
     # ---- NHÓM 3: NÂNG CAO (Mới - Phase 3) ----
 
     # Signal 5: Stochastic Bullish Cross (từ vùng quá bán < 20 lên)
-    # Lỏng tay hơn chút: %K cắt %D và %D < 50
-    if last['%K'] > last['%D'] and prev['%K'] <= prev['%D'] and last['%D'] < 50:
-        score += 2
-        reasons.append("Stoch cắt lên (%D<50)")
+    # Lỏng tay hơn chút: %K cắt %D và %D < 60
+    if last['%K'] > last['%D'] and prev['%K'] <= prev['%D'] and last['%D'] < 60:
+        score += 1
+        reasons.append("Stoch cắt lên")
 
     # Signal 6: ADX mạnh (> 25) xác nhận xu hướng
     if last['ADX'] > 25:

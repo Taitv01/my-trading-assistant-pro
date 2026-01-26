@@ -54,8 +54,8 @@ def run_discovery_scan():
             current_price = df.iloc[-1]['close']
             rsi_val = df.iloc[-1].get('rsi', 0)
             
-            # Nếu điểm tốt (>=4) thì lưu lại
-            if score >= 4:
+            # Nếu điểm tốt (>=MIN_SCORE) thì lưu lại
+            if score >= MIN_SCORE:
                 print(f"Found {symbol}: Score {score}")
                 top_stocks.append({
                     'symbol': symbol,
