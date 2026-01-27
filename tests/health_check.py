@@ -58,7 +58,8 @@ def main():
     try:
         df = calculate_indicators(df)
         
-        indicator_cols = ['RSI', 'MACD', 'Signal', 'MA20', 'MA50']
+        # Các chỉ báo thực tế trong indicators.py
+        indicator_cols = ['RSI', 'MACD', 'Signal', 'SMA20', 'VolMA20']
         missing = [col for col in indicator_cols if col not in df.columns]
         
         if missing:
