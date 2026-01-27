@@ -1,3 +1,6 @@
+"""
+Discovery Scanner - Full market scan for new opportunities
+"""
 import time
 import random
 import pandas as pd
@@ -5,6 +8,7 @@ from .config import MIN_SCORE
 from .data_fetcher import fetch_data
 from .indicators import calculate_indicators, check_signals
 from .filters import is_investable
+from .industry_mapper import analyze_industry_flow
 
 def run_discovery_scan():
     """Chạy quét toàn bộ thị trường"""
@@ -86,16 +90,22 @@ def run_discovery_scan():
     # Sắp xếp kết quả theo điểm số giảm dần
     top_stocks.sort(key=lambda x: x['score'], reverse=True)
     
+    # === MỚI: Phân tích dòng tiền theo ngành ===
+    top_industries = analyze_industry_flow(top_stocks)
+    print(f"\n📊 TOP NGÀNH CÓ TÍN HIỆU:")
+    for i, ind in enumerate(top_industries[:5], 1):
+        print(f"  {i}. {ind['industry']}: {ind['signal_count']} tín hiệu ({', '.join(ind['symbols'][:3])}...)")
+    
     # Trả về format đúng chuẩn cho notifier
     return {
         'total_scanned': scanned_count,
         'top_20_stocks': top_stocks[:20],
         'volume_spikes': volume_spikes,
-        'top_industries': [] 
+        'top_industries': top_industries[:5]  # Top 5 ngành có nhiều tín hiệu nhất
     }
 
 def format_discovery_report(report):
-    """Format kết quả quét để in ra màn hình console (Hàm bạn đang thiếu)"""
+    """Format kết quả quét để in ra màn hình console"""
     if not report:
         return "Không có dữ liệu báo cáo."
     
@@ -114,5 +124,14 @@ def format_discovery_report(report):
     
     for stock in top_5:
         lines.append(f"- {stock['symbol']} ({stock['exchange']}): Score {stock['score']} | Giá: {stock['price']:,.0f}")
+    
+    # === MỚI: Thêm phần hiển thị ngành ===
+    lines.append("\nTOP NGÀNH CÓ DÒNG TIỀN:")
+    top_industries = report.get('top_industries', [])
+    if not top_industries:
+        lines.append(" (Chưa có dữ liệu ngành)")
+    else:
+        for i, ind in enumerate(top_industries[:3], 1):
+            lines.append(f"  {i}. {ind['industry']}: {ind['signal_count']} tín hiệu")
         
     return "\n".join(lines)
