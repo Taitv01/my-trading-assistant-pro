@@ -9,6 +9,7 @@ from .indicators import calculate_indicators, check_signals
 from .filters import is_investable
 from .config import MIN_SCORE
 from .smart_filter import get_smart_watchlist
+from .industry_mapper import analyze_industry_flow
 
 # Rate limiting: vnstock Guest limit is 30 requests/minute
 # We add 2.5 second delay to stay safely under limit (24 requests/min)
@@ -86,7 +87,6 @@ def analyze_market(symbols=None, max_stocks=None):
     print(f"Analyzing {len(symbols)} symbols...")
     
     results = []
-    industry_scores = {}
     
     for i, symbol in enumerate(symbols):
         if (i + 1) % 25 == 0:
@@ -95,7 +95,9 @@ def analyze_market(symbols=None, max_stocks=None):
         result = analyze_stock(symbol)
         if result:
             results.append(result)
-            # Track industry (for now, we don't have industry info, will add later)
+        
+        # Rate limiting
+        time.sleep(API_DELAY_SECONDS)
     
     # Sort by score descending
     results.sort(key=lambda x: x['score'], reverse=True)
@@ -103,11 +105,16 @@ def analyze_market(symbols=None, max_stocks=None):
     # Top 10 stocks
     top_10_stocks = results[:10]
     
-    # TODO: Industry analysis (requires industry mapping from vnstock)
-    # For now, return empty list
-    top_3_industries = []
+    # === MỚI: Phân tích dòng tiền theo ngành ===
+    top_industries = analyze_industry_flow(results)
+    top_3_industries = top_industries[:3]
     
-    print(f"Analysis complete. Found {len(results)} stocks with signals.")
+    print(f"\n📊 TOP NGÀNH CÓ TÍN HIỆU:")
+    for i, ind in enumerate(top_3_industries, 1):
+        symbols_preview = ', '.join(ind['symbols'][:3])
+        print(f"  {i}. {ind['industry']}: {ind['signal_count']} tín hiệu ({symbols_preview}...)")
+    
+    print(f"\nAnalysis complete. Found {len(results)} stocks with signals.")
     
     return top_10_stocks, top_3_industries
 
