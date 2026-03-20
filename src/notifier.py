@@ -119,6 +119,51 @@ def send_telegram_message(symbol, score, reasons, price, df):
         requests.post(url_text, data=payload)
 
 
+# --- SELL SIGNAL MESSAGE ---
+
+def send_sell_alert(symbol, score, reasons, price, df):
+    """Gửi thông báo tín hiệu BÁN (Sell Signal)"""
+    if not TELEGRAM_TOKEN or not CHAT_ID:
+        return
+
+    fireant_link = f"https://fireant.vn/ma-co-phieu/{symbol}"
+    msg = (
+        f"📉 **CẢNH BÁO BÁN: {symbol}**\n"
+        f"⚠️ Điểm bán: {score}/13\n"
+        f"💰 Giá: {price:,.0f}\n"
+        f"💡 Lý do: {', '.join(reasons)}\n"
+        f"🔗 [Xem trên Fireant]({fireant_link})"
+    )
+
+    # Vẽ chart
+    chart_path = generate_chart(symbol, df)
+
+    # Gửi ảnh kèm text
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+
+    if chart_path and os.path.exists(chart_path):
+        with open(chart_path, 'rb') as img:
+            payload = {
+                'chat_id': CHAT_ID,
+                'caption': msg,
+                'parse_mode': 'Markdown'
+            }
+            files = {'photo': img}
+            try:
+                requests.post(url, data=payload, files=files)
+            except Exception as e:
+                print(f"Lỗi gửi tin Telegram (sell): {e}")
+        os.remove(chart_path)
+    else:
+        url_text = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+        payload = {
+            'chat_id': CHAT_ID,
+            'text': msg,
+            'parse_mode': 'Markdown'
+        }
+        requests.post(url_text, data=payload)
+
+
 # --- FULL SCAN MESSAGE (Updated Format) ---
 
 def send_summary_report(top_stocks, top_industries):

@@ -194,3 +194,68 @@ def check_signals(df: pd.DataFrame) -> tuple:
         reasons.append("MFI thoát đáy")
 
     return score, reasons
+
+
+def check_sell_signals(df: pd.DataFrame) -> tuple:
+    """
+    Hệ thống chấm điểm tín hiệu BÁN
+    Returns: (score, reasons)
+    """
+    last = df.iloc[-1]
+    prev = df.iloc[-2]
+
+    score = 0
+    reasons = []
+
+    # ---- NHÓM 1: PRICE & VOLUME ----
+
+    # Signal 1: Volume đột biến + giá giảm
+    if last['VolMA20'] > 0:
+        vol_ratio = last['volume'] / last['VolMA20']
+        if vol_ratio > 1.3 and last['close'] < prev['close']:
+            score += 2
+            reasons.append(f"Vol đột biến bán (x{vol_ratio:.1f})")
+
+    # Signal 2: Giá rớt dưới MA20
+    if last['close'] < last['SMA20'] and prev['close'] >= prev['SMA20']:
+        score += 2
+        reasons.append("Giá cắt xuống MA20")
+
+    # ---- NHÓM 2: TREND & MOMENTUM ----
+
+    # Signal 3: MACD Death Cross
+    if last['MACD'] < last['Signal'] and prev['MACD'] >= prev['Signal']:
+        score += 3
+        reasons.append("MACD Death Cross")
+
+    # Signal 4: RSI quá mua (> 70) hoặc RSI đang giảm từ vùng cao
+    if last['RSI'] > 70:
+        score += 2
+        reasons.append(f"RSI quá mua ({last['RSI']:.0f})")
+    elif last['RSI'] > 60 and last['RSI'] < prev['RSI']:
+        score += 1
+        reasons.append(f"RSI giảm ({last['RSI']:.0f})")
+
+    # ---- NHÓM 3: NÂNG CAO ----
+
+    # Signal 5: Stochastic Bearish Cross (từ vùng quá mua > 80 xuống)
+    if last['%K'] < last['%D'] and prev['%K'] >= prev['%D'] and last['%D'] > 40:
+        score += 1
+        reasons.append("Stoch cắt xuống")
+
+    # Signal 6: ADX yếu (< 20) - xu hướng suy yếu
+    if last['ADX'] < 20:
+        score += 1
+        reasons.append(f"ADX yếu ({last['ADX']:.0f})")
+
+    # Signal 7: OBV phân phối (OBV giảm trong 5 phiên)
+    if len(df) > 5:
+        obv_change = last['OBV'] - df['OBV'].iloc[-5]
+        if obv_change < 0 and last['close'] <= df['close'].iloc[-5]:
+            score += 1
+            reasons.append("OBV phân phối")
+
+    # Signal 8: MFI quá mua (> 80)
+    if last['MFI'] > 80:
+        score += 1
+        reasons.append("MFI quá mua")
